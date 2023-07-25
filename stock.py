@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
-# import nltk
 from newsapi import NewsApiClient
 from keras.models import Sequential, load_model
 from keras.layers import LSTM, Dropout, Dense
@@ -13,8 +12,23 @@ from datetime import date, timedelta
 from pandas_datareader import data as pdr
 from textblob import TextBlob
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from flair.models import TextClassifier
+from flair.data import Sentence
 
-# nltk.download('vader_lexicon')
+classifier = TextClassifier.load('en-sentiment')
+
+def get_sentiment_flair(text):
+    # Make a sentence object
+    sentence = Sentence(text)
+
+    # Predict the sentiment
+    classifier.predict(sentence)
+
+    # Extract the sentiment
+    sentiment = sentence.labels[0].value  # 'POSITIVE' or 'NEGATIVE'
+    score = sentence.labels[0].score  # confidence score
+
+    return sentiment, score
 
 # Initialize NewsApiClient
 newsapi = NewsApiClient(api_key='f2fb7f58a9904a528f5d5d9c66c5682e')
@@ -48,8 +62,10 @@ def fetch_news(company):
 
     # Perform sentiment analysis
     sia = SentimentIntensityAnalyzer()
-    df_articles['sentiment'] = df_articles['title'].apply(lambda title: TextBlob(title).sentiment.polarity)
+    df_articles['textBlob_sentiment'] = df_articles['title'].apply(lambda title: TextBlob(title).sentiment.polarity)
     df_articles['vader_sentiment'] = df_articles['title'].apply(lambda title: sia.polarity_scores(title)['compound'])
+    df_articles['flair_sentiment'] = df_articles['title'].apply(lambda title: get_sentiment_flair(title)[0])
+    df_articles['flair_score'] = df_articles['title'].apply(lambda title: get_sentiment_flair(title)[1])
 
     return df_articles
 
@@ -130,6 +146,16 @@ def fetch_stock_data(ticker):
 
     mape = mean_absolute_error(y_test, y_predicted)
 
+    # Plotting Closing Price v/s Time Chart with 50MA and 200MA
+    st.subheader('Closing Price v/s Time Chart with 50MA and 200MA')
+    fig2 = plt.figure(figsize = (12,6))
+    ma50 = df.Close.rolling(50).mean()
+    ma200 = df.Close.rolling(200).mean()
+    plt.plot(df.Close)
+    plt.plot(ma50, 'r')
+    plt.plot(ma200, 'g')
+    st.pyplot(fig2)
+
     return y_test, y_predicted,mape
 
 def calculate_correlation(ticker, news_data):
@@ -150,12 +176,16 @@ def calculate_correlation(ticker, news_data):
     # Calculate and display correlation between last month's stock prices and sentiment scores
 
     # TextBlob Correlation
-    correlation_textBlob = merged_data['Actual Price'].corr(merged_data['sentiment'])
+    correlation_textBlob = merged_data['Actual Price'].corr(merged_data['textBlob_sentiment'])
 
     # NLTK's Vader Correlation
     correlation_vader = merged_data['Actual Price'].corr(merged_data['vader_sentiment'])
+
+    # Flair Correlation
+    correlation_flair = merged_data['Actual Price'].corr(merged_data['flair_score'])
+    # correlation_flair_score = merged_data['Actual Price'].corr(merged_data['flair_score'])
     
-    return correlation_textBlob, correlation_vader, merged_data
+    return correlation_textBlob, correlation_vader, correlation_flair, merged_data
 
 
 # The companies you can find data of
@@ -171,7 +201,6 @@ company_ticker_mapping = {
 company = st.selectbox('Choose company name', list(company_ticker_mapping.keys()))
 ticker = company_ticker_mapping[company]
 st.text_input(label="Ticker",placeholder=ticker,disabled=True)
-
 
 # Fetch data
 news_data = fetch_news(company)
@@ -198,7 +227,7 @@ st.write(news_data)
 
 #  Calculate and display correlation between last month's stock prices and sentiment scores
 st.subheader('Correlation Between Stock Prices and News Sentiment')
-correlation_textBlob, correlation_vader, merged_data = calculate_correlation(ticker, news_data)
+correlation_textBlob, correlation_vader, correlation_flair, merged_data = calculate_correlation(ticker, news_data)
 
 # TextBlob Correlation
 if np.isnan(correlation_textBlob):
@@ -212,19 +241,43 @@ if np.isnan(correlation_vader):
 else:
     st.text_input(label="Vader Correlation",placeholder=correlation_vader,disabled=True)
 
-# Checks
+# Flair Correlation  
+if np.isnan(correlation_flair):
+    st.text_input(label="Flair Correlation",placeholder="No flair correlation found",disabled=True)
+    # st.text_input(label="Flair Score",placeholder=correlation_flair_score,disabled=True)
+else:
+    st.text_input(label="Flair Correlation",placeholder=correlation_flair,disabled=True)
+    # st.text_input(label="Flair Score",placeholder=correlation_flair_score,disabled=True)
 
-# Check range and variance of sentiment scores
+
+# Range and variance of sentiment scores
 st.subheader('Sentiment range and variance')
-sentiment_range = news_data['sentiment'].max() - news_data['sentiment'].min()
-sentiment_variance = news_data['sentiment'].var()
-st.text_input(label="Sentiment range",placeholder=sentiment_range,disabled=True)
-st.text_input(label="Variance",placeholder=sentiment_variance,disabled=True)
+
+# TextBlob
+sentiment_range_textBlob = news_data['textBlob_sentiment'].max() - news_data['textBlob_sentiment'].min()
+sentiment_variance_textBlob = news_data['textBlob_sentiment'].var()
+st.text_input(label="TextBlob Sentiment range",placeholder=sentiment_range_textBlob,disabled=True)
+st.text_input(label="TextBlob Variance",placeholder=sentiment_variance_textBlob,disabled=True)
+
+# NLTK's Vader
+sentiment_range_vader = news_data['vader_sentiment'].max() - news_data['vader_sentiment'].min()
+sentiment_variance_vader = news_data['vader_sentiment'].var()
+st.text_input(label="Vader Sentiment range",placeholder=sentiment_range_vader,disabled=True)
+st.text_input(label="Vader Variance",placeholder=sentiment_variance_vader,disabled=True)
+
+# Flair
+sentiment_range_flair = news_data['flair_score'].max() - news_data['flair_score'].min()
+sentiment_variance_flair = news_data['flair_score'].var()
+st.text_input(label="Flair Sentiment range",placeholder=sentiment_range_flair,disabled=True)
+st.text_input(label="Flair Variance",placeholder=sentiment_variance_flair,disabled=True)
+
+
+# Checks
 
 # Check if merged_data is empty
 if merged_data.empty:
     st.write('No overlap in dates between stock prices and news data.')
 
 # Check for nan values in merged_data
-if merged_data['Actual Price'].isna().any() or merged_data['sentiment'].isna().any():
+if merged_data['Actual Price'].isna().any() or merged_data['textBlob_sentiment'].isna().any() or merged_data['vader_sentiment'].isna().any() or merged_data['flair_score'].isna().any():
     st.write('Nan values in Actual Price or sentiment.')
