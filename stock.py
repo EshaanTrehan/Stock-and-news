@@ -1,19 +1,20 @@
-import streamlit as st
-from newsapi import NewsApiClient
+import yfinance as yf
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import streamlit as st
+# import nltk
+from newsapi import NewsApiClient
 from keras.models import Sequential, load_model
 from keras.layers import LSTM, Dropout, Dense
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error
 from datetime import date, timedelta
 from pandas_datareader import data as pdr
-import yfinance as yf
-import requests
-import json
-import csv
-import matplotlib.pyplot as plt
 from textblob import TextBlob
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+
+# nltk.download('vader_lexicon')
 
 # Initialize NewsApiClient
 newsapi = NewsApiClient(api_key='f2fb7f58a9904a528f5d5d9c66c5682e')
@@ -46,7 +47,9 @@ def fetch_news(company):
     df_articles = df_articles.drop(columns=['publishedAt'], errors='ignore')
 
     # Perform sentiment analysis
+    sia = SentimentIntensityAnalyzer()
     df_articles['sentiment'] = df_articles['title'].apply(lambda title: TextBlob(title).sentiment.polarity)
+    df_articles['vader_sentiment'] = df_articles['title'].apply(lambda title: sia.polarity_scores(title)['compound'])
 
     return df_articles
 
@@ -145,9 +148,14 @@ def calculate_correlation(ticker, news_data):
     merged_data = pd.merge(df_last_month, news_data, on='date', how='inner')
 
     # Calculate and display correlation between last month's stock prices and sentiment scores
-    correlation = merged_data['Actual Price'].corr(merged_data['sentiment'])
+
+    # TextBlob Correlation
+    correlation_textBlob = merged_data['Actual Price'].corr(merged_data['sentiment'])
+
+    # NLTK's Vader Correlation
+    correlation_vader = merged_data['Actual Price'].corr(merged_data['vader_sentiment'])
     
-    return correlation
+    return correlation_textBlob, correlation_vader, merged_data
 
 
 # The companies you can find data of
@@ -188,30 +196,21 @@ st.text_input(label="Mean absolute error",placeholder=mape,disabled=True)
 st.subheader('News Data and Sentiment Scores')
 st.write(news_data)
 
-# # Converting news_data columns to datetime
-# news_data['date'] = pd.to_datetime(news_data['date'])
-
-# # Fetch stock data for the last month for correlation calculation
-# end_date = datetime.today()
-# start_date = end_date - timedelta(days=30)
-# df_last_month = yf.download(ticker, start=start_date, end=end_date)
-# df_last_month.reset_index(inplace=True)
-# df_last_month.rename(columns={'Date':'date', 'Close':'Actual Price'}, inplace=True)
-# df_last_month['date'] = pd.to_datetime(df_last_month['date'])  # Ensure 'date' is in datetime format
-
-# # Merge last month's stock prices and news data
-# merged_data = pd.merge(df_last_month, news_data, on='date', how='inner')
-
-# # Calculate and display correlation between last month's stock prices and sentiment scores
-# correlation = merged_data['Actual Price'].corr(merged_data['sentiment'])
-
-correlation = calculate_correlation(ticker, news_data)
+#  Calculate and display correlation between last month's stock prices and sentiment scores
 st.subheader('Correlation Between Stock Prices and News Sentiment')
-if np.isnan(correlation):
-    st.write('No correlation found')
+correlation_textBlob, correlation_vader, merged_data = calculate_correlation(ticker, news_data)
+
+# TextBlob Correlation
+if np.isnan(correlation_textBlob):
+    st.text_input(label="TextBlob Correlation",placeholder="No textBlob correlation found",disabled=True)
 else:
-    st.write(correlation)
-    
+    st.text_input(label="TextBlob Correlation",placeholder=correlation_textBlob,disabled=True)  
+
+# NLTK's Vader Correlation  
+if np.isnan(correlation_vader):
+    st.text_input(label="Vader Correlation",placeholder="No vader correlation found",disabled=True)
+else:
+    st.text_input(label="Vader Correlation",placeholder=correlation_vader,disabled=True)
 
 # Checks
 
