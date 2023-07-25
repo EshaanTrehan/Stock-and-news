@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
-from newsapi import NewsApiClient
+from newsapi.newsapi_client import NewsApiClient
 from keras.models import Sequential, load_model
 from keras.layers import LSTM, Dropout, Dense
 from sklearn.preprocessing import MinMaxScaler
@@ -41,24 +41,38 @@ def fetch_news(company):
     end_date = datetime.now()
     start_date = end_date - timedelta(30)
 
+    class sources_news_fetch:    
+        def __init__(self):
+            print("init")
+
+        def getSources(self):
+            newsapi.get_sources(category='business',language='en')
+
+    sources_news = sources_news_fetch().getSources()
+
+
+    # All articles upto 100 articles
     all_articles = newsapi.get_everything(q=company,
+                                          sources=sources_news,
                                           from_param=start_date.strftime('%Y-%m-%d'),
                                           to=end_date.strftime('%Y-%m-%d'),
                                           language='en',
                                           sort_by='publishedAt')
+    
     all_articles = all_articles['articles']
 
     # Convert articles to DataFrame
     df_articles = pd.DataFrame(all_articles)
     
     # Drop columns if they exist in DataFrame
-    columns_to_drop = ['source', 'url', 'urlToImage']
+    columns_to_drop = ['source', 'url', 'urlToImage', 'description','content']
     df_articles = df_articles.drop(columns=[col for col in columns_to_drop if col in df_articles.columns], errors='ignore')
 
     # Extract date from publishedAt
-    df_articles['publishedAt'] = pd.to_datetime(df_articles['publishedAt'])
-    df_articles['date'] = df_articles['publishedAt'].dt.date
-    df_articles = df_articles.drop(columns=['publishedAt'], errors='ignore')
+    if 'publishedAt' in df_articles.columns:
+        df_articles['publishedAt'] = pd.to_datetime(df_articles['publishedAt'])
+        df_articles['date'] = df_articles['publishedAt'].dt.date
+        df_articles = df_articles.drop(columns=['publishedAt'], errors='ignore')
 
     # Perform sentiment analysis
     sia = SentimentIntensityAnalyzer()
@@ -183,9 +197,31 @@ def calculate_correlation(ticker, news_data):
 
     # Flair Correlation
     correlation_flair = merged_data['Actual Price'].corr(merged_data['flair_score'])
-    # correlation_flair_score = merged_data['Actual Price'].corr(merged_data['flair_score'])
-    
-    return correlation_textBlob, correlation_vader, correlation_flair, merged_data
+
+    # Average correlation
+    weight_flair = 0.34
+    weight_vader = 0.33
+    weight_textblob = 0.33
+    merged_data['weighted_average_score'] = weight_flair * merged_data['flair_score'] + weight_vader * merged_data['vader_sentiment'] + weight_textblob * merged_data['textBlob_sentiment']
+    average_score = merged_data['Actual Price'].corr(merged_data['weighted_average_score'])
+
+    # Plotting the scores
+    # Convert date from object to datetime
+    merged_data['date'] = pd.to_datetime(merged_data['date'])
+
+    # Plot sentiment scores over time
+    plt.figure(figsize=(10, 6))
+    plt.plot(merged_data['date'], merged_data['flair_score'], label='Flair')
+    plt.plot(merged_data['date'], merged_data['vader_sentiment'], label='Vader')
+    plt.plot(merged_data['date'], merged_data['textBlob_sentiment'], label='TextBlob')
+    plt.plot(merged_data['date'], merged_data['weighted_average_score'], label='Average')
+    plt.xlabel('Date')
+    plt.ylabel('Sentiment Score')
+    plt.title('Sentiment Analysis Over Time')
+    plt.legend()
+    st.pyplot(plt)
+
+    return correlation_textBlob, correlation_vader, correlation_flair,average_score, merged_data
 
 
 # The companies you can find data of
@@ -227,7 +263,7 @@ st.write(news_data)
 
 #  Calculate and display correlation between last month's stock prices and sentiment scores
 st.subheader('Correlation Between Stock Prices and News Sentiment')
-correlation_textBlob, correlation_vader, correlation_flair, merged_data = calculate_correlation(ticker, news_data)
+correlation_textBlob, correlation_vader, correlation_flair,average_score, merged_data = calculate_correlation(ticker, news_data)
 
 # TextBlob Correlation
 if np.isnan(correlation_textBlob):
@@ -244,11 +280,14 @@ else:
 # Flair Correlation  
 if np.isnan(correlation_flair):
     st.text_input(label="Flair Correlation",placeholder="No flair correlation found",disabled=True)
-    # st.text_input(label="Flair Score",placeholder=correlation_flair_score,disabled=True)
 else:
     st.text_input(label="Flair Correlation",placeholder=correlation_flair,disabled=True)
-    # st.text_input(label="Flair Score",placeholder=correlation_flair_score,disabled=True)
 
+# Average Correlation
+if np.isnan(average_score):
+    st.text_input(label="Average Correlation",placeholder="No average correlation found",disabled=True)
+else:
+    st.text_input(label="Average Correlation",placeholder=average_score,disabled=True)
 
 # Range and variance of sentiment scores
 st.subheader('Sentiment range and variance')
