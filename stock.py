@@ -3,6 +3,10 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
+import torch
+import plotly.graph_objects as go
+from transformers import RobertaForSequenceClassification, RobertaTokenizer
+from torch.nn import functional as F
 from newsapi.newsapi_client import NewsApiClient
 from keras.models import Sequential, load_model
 from keras.layers import LSTM, Dropout, Dense
@@ -14,8 +18,12 @@ from textblob import TextBlob
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from flair.models import TextClassifier
 from flair.data import Sentence
+from plotly.subplots import make_subplots
 
+# Initializng some sentiment analysis tools
 classifier = TextClassifier.load('en-sentiment')
+model = RobertaForSequenceClassification.from_pretrained('textattack/roberta-base-SST-2')
+tokenizer = RobertaTokenizer.from_pretrained('textattack/roberta-base-SST-2')
 
 def get_sentiment_flair(text):
     # Make a sentence object
@@ -29,6 +37,16 @@ def get_sentiment_flair(text):
     score = sentence.labels[0].score  # confidence score
 
     return sentiment, score
+
+def roberta_sentiment(text):
+    inputs = tokenizer(text, return_tensors='pt')
+    outputs = model(**inputs)
+    probs = F.softmax(outputs[0], dim=1)
+    sentiment_score = probs[0][1] - probs[0][0]  # subtract the probability of negative sentiment from the probability of positive sentiment
+    sentiment_score = sentiment_score.item()
+
+    return sentiment_score
+
 
 # Initialize NewsApiClient
 newsapi = NewsApiClient(api_key='f2fb7f58a9904a528f5d5d9c66c5682e')
@@ -66,7 +84,7 @@ def fetch_news(company):
     df_articles = pd.DataFrame(all_articles)
     
     # Drop columns if they exist in DataFrame
-    columns_to_drop = ['source', 'url', 'urlToImage', 'description','content']
+    columns_to_drop = ['source', 'url', 'urlToImage','content']
     df_articles = df_articles.drop(columns=[col for col in columns_to_drop if col in df_articles.columns], errors='ignore')
 
     # Extract date from publishedAt
@@ -81,6 +99,7 @@ def fetch_news(company):
     df_articles['vader_sentiment'] = df_articles['title'].apply(lambda title: sia.polarity_scores(title)['compound'])
     df_articles['flair_sentiment'] = df_articles['title'].apply(lambda title: get_sentiment_flair(title)[0])
     df_articles['flair_score'] = df_articles['title'].apply(lambda title: get_sentiment_flair(title)[1])
+    df_articles['roberta_sentiment'] = df_articles['description'].apply(roberta_sentiment)
 
     return df_articles
 
@@ -199,11 +218,15 @@ def calculate_correlation(ticker, news_data):
     # Flair Correlation
     correlation_flair = merged_data['Actual Price'].corr(merged_data['flair_score'])
 
+    # Roberta Correlation
+    correlation_roberta = merged_data['Actual Price'].corr(merged_data['roberta_sentiment'])
+
     # Average correlation
-    weight_flair = 0.34
-    weight_vader = 0.33
-    weight_textblob = 0.33
-    merged_data['weighted_average_score'] = weight_flair * merged_data['flair_score'] + weight_vader * merged_data['vader_sentiment'] + weight_textblob * merged_data['textBlob_sentiment']
+    weight_flair = 0.25
+    weight_vader = 0.25
+    weight_textblob = 0.25
+    weight_roberta = 0.25
+    merged_data['weighted_average_score'] = weight_flair * merged_data['flair_score'] + weight_vader * merged_data['vader_sentiment'] + weight_textblob * merged_data['textBlob_sentiment'] + weight_roberta *merged_data['roberta_sentiment']
     average_score = merged_data['Actual Price'].corr(merged_data['weighted_average_score'])
 
     # Plotting the scores
@@ -211,34 +234,69 @@ def calculate_correlation(ticker, news_data):
     merged_data['date'] = pd.to_datetime(merged_data['date'])
 
     # Plot sentiment scores over time
-    fig, ax1 = plt.subplots(figsize=(12,6))
 
-    color = 'tab:blue'
-    # Sentiment scores
-    ax1.set_xlabel('Date')
-    ax1.set_ylabel('Sentiment Score', color=color)
-    ax1.plot(merged_data['date'], merged_data['weighted_average_score'], color=color, label='Average Sentiment score')
-    ax1.plot(merged_data['date'], merged_data['textBlob_sentiment'], color='tab:cyan', label='TextBlob Sentiment score')
-    ax1.plot(merged_data['date'], merged_data['vader_sentiment'], color='tab:orange', label='VADER Sentiment score')
-    ax1.plot(merged_data['date'], merged_data['flair_score'], color='tab:green', label='Flair Sentiment score')
-    ax1.tick_params(axis='y', labelcolor=color)
-    ax1.legend(loc='upper left')
+    # Old Graph
+    # fig, ax1 = plt.subplots(figsize=(12,6))
 
-    # instantiate a second axes that shares the same x-axis
-    ax2 = ax1.twinx() 
+    # color = 'tab:blue'
+    # # Sentiment scores
+    # ax1.set_xlabel('Date')
+    # ax1.set_ylabel('Sentiment Score', color=color)
+    # ax1.plot(merged_data['date'], merged_data['weighted_average_score'], color=color, label='Average Sentiment score')
+    # ax1.plot(merged_data['date'], merged_data['textBlob_sentiment'], color='tab:cyan', label='TextBlob Sentiment score')
+    # ax1.plot(merged_data['date'], merged_data['vader_sentiment'], color='tab:orange', label='VADER Sentiment score')
+    # ax1.plot(merged_data['date'], merged_data['flair_score'], color='tab:green', label='Flair Sentiment score')
+    # ax1.plot(merged_data['date'], merged_data['roberta_sentiment'], color='tab:pink', label='Roberta Sentiment score')
+    # ax1.tick_params(axis='y', labelcolor=color)
+    # ax1.legend(loc='upper left')
 
-    color = 'tab:red'
-    # Stock prices
-    ax2.set_ylabel('Stock Price', color=color)
-    ax2.plot(merged_data['date'], merged_data['Actual Price'], color=color, label='Actual Stock Price')
-    ax2.tick_params(axis='y', labelcolor=color)
-    ax2.legend(loc='upper right')
+    # # instantiate a second axes that shares the same x-axis
+    # ax2 = ax1.twinx() 
 
-    fig.tight_layout()  # otherwise the right y-label is slightly clipped
-    st.pyplot(fig)
+    # color = 'tab:red'
+    # # Stock prices
+    # ax2.set_ylabel('Stock Price', color=color)
+    # ax2.plot(merged_data['date'], merged_data['Actual Price'], color=color, label='Actual Stock Price')
+    # ax2.tick_params(axis='y', labelcolor=color)
+    # ax2.legend(loc='upper right')
 
+    # fig.tight_layout()  # otherwise the right y-label is slightly clipped
+    # st.pyplot(fig)
 
-    return correlation_textBlob, correlation_vader, correlation_flair,average_score, merged_data
+    # New interactive graph
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # Add traces
+    fig.add_trace(go.Scatter(x=merged_data['date'], y=merged_data['textBlob_sentiment'],
+                        mode='lines',
+                        name='TextBlob sentiment'), secondary_y=False)
+    fig.add_trace(go.Scatter(x=merged_data['date'], y=merged_data['vader_sentiment'],
+                        mode='lines',
+                        name='VADER sentiment'), secondary_y=False)
+    fig.add_trace(go.Scatter(x=merged_data['date'], y=merged_data['flair_score'],
+                        mode='lines', name='Flair sentiment'), secondary_y=False)
+    fig.add_trace(go.Scatter(x=merged_data['date'], y=merged_data['roberta_sentiment'],
+                        mode='lines', name='RoBERTa sentiment'), secondary_y=False)
+    fig.add_trace(go.Scatter(x=merged_data['date'], y=merged_data['Actual Price'],
+                        mode='lines', name='Stock Price'), secondary_y=True)
+
+    # Set layout properties
+    fig.update_layout(
+        title="Sentiment Scores and Stock Prices Over Time",
+        xaxis_title="Date",
+        autosize=False,
+        width=800,
+        height=500,
+    )
+
+    # Set y-axes titles
+    fig.update_yaxes(title_text="Sentiment Score", secondary_y=False)
+    fig.update_yaxes(title_text="Stock Price", secondary_y=True)
+
+    # Display the figure
+    st.plotly_chart(fig)
+
+    return correlation_textBlob, correlation_vader, correlation_flair,correlation_roberta,average_score, merged_data
 
 
 # The companies you can find data of
@@ -280,7 +338,7 @@ st.write(news_data)
 
 #  Calculate and display correlation between last month's stock prices and sentiment scores
 st.subheader('Correlation Between Stock Prices and News Sentiment')
-correlation_textBlob, correlation_vader, correlation_flair,average_score, merged_data = calculate_correlation(ticker, news_data)
+correlation_textBlob, correlation_vader, correlation_flair,correlation_roberta,average_score, merged_data = calculate_correlation(ticker, news_data)
 
 # TextBlob Correlation
 if np.isnan(correlation_textBlob):
@@ -299,6 +357,12 @@ if np.isnan(correlation_flair):
     st.text_input(label="Flair Correlation score",placeholder="No flair correlation found",disabled=True)
 else:
     st.text_input(label="Flair Correlation score",placeholder=correlation_flair,disabled=True)
+
+# Roberta Correlation
+if np.isnan(correlation_roberta):
+    st.text_input(label="Roberta Correlation score",placeholder="No roberta correlation found",disabled=True)
+else:
+    st.text_input(label="Roberta Correlation score",placeholder=correlation_roberta,disabled=True)
 
 # Average Correlation
 if np.isnan(average_score):
@@ -327,6 +391,11 @@ sentiment_variance_flair = news_data['flair_score'].var()
 st.text_input(label="Flair Sentiment score range",placeholder=sentiment_range_flair,disabled=True)
 st.text_input(label="Flair score Variance",placeholder=sentiment_variance_flair,disabled=True)
 
+# Roberta
+sentiment_range_roberta = news_data['roberta_sentiment'].max() - news_data['roberta_sentiment'].min()
+sentiment_variance_roberta = news_data['roberta_sentiment'].var()
+st.text_input(label="Roberta Sentiment score range",placeholder=sentiment_range_roberta,disabled=True)
+st.text_input(label="Roberta score Variance",placeholder=sentiment_variance_roberta,disabled=True)
 
 # Checks
 
