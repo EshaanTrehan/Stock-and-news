@@ -54,6 +54,7 @@ def fetch_news(company):
     # All articles upto 100 articles
     all_articles = newsapi.get_everything(q=company,
                                           sources=sources_news,
+                                          qintitle=company,
                                           from_param=start_date.strftime('%Y-%m-%d'),
                                           to=end_date.strftime('%Y-%m-%d'),
                                           language='en',
@@ -210,16 +211,32 @@ def calculate_correlation(ticker, news_data):
     merged_data['date'] = pd.to_datetime(merged_data['date'])
 
     # Plot sentiment scores over time
-    plt.figure(figsize=(10, 6))
-    plt.plot(merged_data['date'], merged_data['flair_score'], label='Flair')
-    plt.plot(merged_data['date'], merged_data['vader_sentiment'], label='Vader')
-    plt.plot(merged_data['date'], merged_data['textBlob_sentiment'], label='TextBlob')
-    plt.plot(merged_data['date'], merged_data['weighted_average_score'], label='Average')
-    plt.xlabel('Date')
-    plt.ylabel('Sentiment Score')
-    plt.title('Sentiment Analysis Over Time')
-    plt.legend()
-    st.pyplot(plt)
+    fig, ax1 = plt.subplots(figsize=(12,6))
+
+    color = 'tab:blue'
+    # Sentiment scores
+    ax1.set_xlabel('Date')
+    ax1.set_ylabel('Sentiment Score', color=color)
+    ax1.plot(merged_data['date'], merged_data['weighted_average_score'], color=color, label='Average Sentiment score')
+    ax1.plot(merged_data['date'], merged_data['textBlob_sentiment'], color='tab:cyan', label='TextBlob Sentiment score')
+    ax1.plot(merged_data['date'], merged_data['vader_sentiment'], color='tab:orange', label='VADER Sentiment score')
+    ax1.plot(merged_data['date'], merged_data['flair_score'], color='tab:green', label='Flair Sentiment score')
+    ax1.tick_params(axis='y', labelcolor=color)
+    ax1.legend(loc='upper left')
+
+    # instantiate a second axes that shares the same x-axis
+    ax2 = ax1.twinx() 
+
+    color = 'tab:red'
+    # Stock prices
+    ax2.set_ylabel('Stock Price', color=color)
+    ax2.plot(merged_data['date'], merged_data['Actual Price'], color=color, label='Actual Stock Price')
+    ax2.tick_params(axis='y', labelcolor=color)
+    ax2.legend(loc='upper right')
+
+    fig.tight_layout()  # otherwise the right y-label is slightly clipped
+    st.pyplot(fig)
+
 
     return correlation_textBlob, correlation_vader, correlation_flair,average_score, merged_data
 
@@ -267,27 +284,27 @@ correlation_textBlob, correlation_vader, correlation_flair,average_score, merged
 
 # TextBlob Correlation
 if np.isnan(correlation_textBlob):
-    st.text_input(label="TextBlob Correlation",placeholder="No textBlob correlation found",disabled=True)
+    st.text_input(label="TextBlob Correlation score",placeholder="No textBlob correlation found",disabled=True)
 else:
-    st.text_input(label="TextBlob Correlation",placeholder=correlation_textBlob,disabled=True)  
+    st.text_input(label="TextBlob Correlation score",placeholder=correlation_textBlob,disabled=True)  
 
 # NLTK's Vader Correlation  
 if np.isnan(correlation_vader):
-    st.text_input(label="Vader Correlation",placeholder="No vader correlation found",disabled=True)
+    st.text_input(label="Vader Correlation score",placeholder="No vader correlation found",disabled=True)
 else:
-    st.text_input(label="Vader Correlation",placeholder=correlation_vader,disabled=True)
+    st.text_input(label="Vader Correlation score",placeholder=correlation_vader,disabled=True)
 
 # Flair Correlation  
 if np.isnan(correlation_flair):
-    st.text_input(label="Flair Correlation",placeholder="No flair correlation found",disabled=True)
+    st.text_input(label="Flair Correlation score",placeholder="No flair correlation found",disabled=True)
 else:
-    st.text_input(label="Flair Correlation",placeholder=correlation_flair,disabled=True)
+    st.text_input(label="Flair Correlation score",placeholder=correlation_flair,disabled=True)
 
 # Average Correlation
 if np.isnan(average_score):
-    st.text_input(label="Average Correlation",placeholder="No average correlation found",disabled=True)
+    st.text_input(label="Average Correlation score",placeholder="No average correlation found",disabled=True)
 else:
-    st.text_input(label="Average Correlation",placeholder=average_score,disabled=True)
+    st.text_input(label="Average Correlation score",placeholder=average_score,disabled=True)
 
 # Range and variance of sentiment scores
 st.subheader('Sentiment range and variance')
@@ -295,20 +312,20 @@ st.subheader('Sentiment range and variance')
 # TextBlob
 sentiment_range_textBlob = news_data['textBlob_sentiment'].max() - news_data['textBlob_sentiment'].min()
 sentiment_variance_textBlob = news_data['textBlob_sentiment'].var()
-st.text_input(label="TextBlob Sentiment range",placeholder=sentiment_range_textBlob,disabled=True)
-st.text_input(label="TextBlob Variance",placeholder=sentiment_variance_textBlob,disabled=True)
+st.text_input(label="TextBlob Sentiment score range",placeholder=sentiment_range_textBlob,disabled=True)
+st.text_input(label="TextBlob score Variance",placeholder=sentiment_variance_textBlob,disabled=True)
 
 # NLTK's Vader
 sentiment_range_vader = news_data['vader_sentiment'].max() - news_data['vader_sentiment'].min()
 sentiment_variance_vader = news_data['vader_sentiment'].var()
-st.text_input(label="Vader Sentiment range",placeholder=sentiment_range_vader,disabled=True)
-st.text_input(label="Vader Variance",placeholder=sentiment_variance_vader,disabled=True)
+st.text_input(label="Vader Sentiment score range",placeholder=sentiment_range_vader,disabled=True)
+st.text_input(label="Vader score Variance",placeholder=sentiment_variance_vader,disabled=True)
 
 # Flair
 sentiment_range_flair = news_data['flair_score'].max() - news_data['flair_score'].min()
 sentiment_variance_flair = news_data['flair_score'].var()
-st.text_input(label="Flair Sentiment range",placeholder=sentiment_range_flair,disabled=True)
-st.text_input(label="Flair Variance",placeholder=sentiment_variance_flair,disabled=True)
+st.text_input(label="Flair Sentiment score range",placeholder=sentiment_range_flair,disabled=True)
+st.text_input(label="Flair score Variance",placeholder=sentiment_variance_flair,disabled=True)
 
 
 # Checks
