@@ -136,6 +136,9 @@ def fetch_stock_data(ticker):
 
     # Machine Learning Model
 
+    # from keras.layers import Dense, Dropout, LSTM
+    # from keras.models import Sequential
+
     # model = Sequential()
     # model.add(LSTM(units = 90, activation = 'softsign', return_sequences = True, input_shape = (x_train.shape[1],1)))
     # model.add(Dropout(0.2))
@@ -152,7 +155,7 @@ def fetch_stock_data(ticker):
     # model.add(Dense(units = 1))
 
     # model.compile(optimizer='RMSprop', loss = 'mean_squared_error')
-    # model.fit(x_train, y_train, epochs=10)
+    # model.fit(x_train, y_train, epochs=50)
     # model.save('keras_model.h5')
 
     past_100_days = data_training.tail(100)
@@ -222,11 +225,10 @@ def calculate_correlation(ticker, news_data):
     correlation_roberta = merged_data['Actual Price'].corr(merged_data['roberta_sentiment'])
 
     # Average correlation
-    weight_flair = 0.25
-    weight_vader = 0.25
-    weight_textblob = 0.25
-    weight_roberta = 0.25
-    merged_data['weighted_average_score'] = weight_flair * merged_data['flair_score'] + weight_vader * merged_data['vader_sentiment'] + weight_textblob * merged_data['textBlob_sentiment'] + weight_roberta *merged_data['roberta_sentiment']
+    weight_flair = 0.34
+    weight_vader = 0.33
+    weight_textblob = 0.33
+    merged_data['weighted_average_score'] = weight_flair * merged_data['flair_score'] + weight_vader * merged_data['vader_sentiment'] + weight_textblob * merged_data['textBlob_sentiment'] 
     average_score = merged_data['Actual Price'].corr(merged_data['weighted_average_score'])
 
     # Plotting the scores
@@ -404,5 +406,5 @@ if merged_data.empty:
     st.write('No overlap in dates between stock prices and news data.')
 
 # Check for nan values in merged_data
-if merged_data['Actual Price'].isna().any() or merged_data['textBlob_sentiment'].isna().any() or merged_data['vader_sentiment'].isna().any() or merged_data['flair_score'].isna().any():
+if merged_data['Actual Price'].isna().any() or merged_data['textBlob_sentiment'].isna().any() or merged_data['vader_sentiment'].isna().any() or merged_data['flair_score'].isna().any() or merged_data['roberta_sentiment'].isna().any():
     st.write('Nan values in Actual Price or sentiment.')
